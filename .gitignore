@@ -11,6 +11,8 @@
 # Example code in package build process
 *-Ex.R
 
+*/rds/general/project/hda_21-22/live/TDS/General/
+
 # Output files from R CMD build
 /*.tar.gz
 

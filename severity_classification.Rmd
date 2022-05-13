@@ -1,0 +1,120 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+```{r, setup}
+library(dplyr); library(ggplot2)
+```
+
+£```{r}
+data <- read.csv('merged.csv')
+data$`Doctor diagnosed asthma.0.0` <- as.factor(data$`Doctor diagnosed asthma.0.0`)
+data2 <- data[which(data2$`Doctor diagnosed asthma.0.0` == 'Yes'),]
+names(data2)
+dim(data2)
+£```
+
+
+```{r}
+library(dplyr)
+# Make min and max columns for variance calculations of PEF
+data <- transform(data, minPEF = pmin(Peak.expiratory.flow..PEF..0.0, Peak.expiratory.flow..PEF..0.1, Peak.expiratory.flow..PEF..0.2, na.rm = TRUE))
+data <- transform(data, maxPEF = pmax(Peak.expiratory.flow..PEF..0.0, Peak.expiratory.flow..PEF..0.1, Peak.expiratory.flow..PEF..0.2, na.rm = TRUE))
+
+# Find variance percentage 
+### ------------------ Please double check this formula
+data <- data %>% mutate(varPEF = (200*(maxPEF - minPEF)) / (maxPEF + minPEF) )
+```
+
+```{r}
+data3 <- data3 %>% filter(`Doctor diagnosed asthma.0.0` == 'Yes')
+
+datafull <- cbind(data, med = data3$`Recent medication for asthma.0.0`, med0 = data3$`Treatment/medication code.0.0`, med1 = data3$`Treatment/medication code.0.1`, med2 = data3$`Treatment/medication code.0.2`, med3 = data3$`Treatment/medication code.0.3`, agediag = data3$`Age asthma diagnosed by doctor.0.0`)
+
+# Make column
+data$severity <- as.character('nan')
+```
+
+```{r}
+# Step 1-3
+step1 <- ((data$FEV1_best / data$FEV1_pred * 100 >= 80) & (data$varPEF < 20))
+step1true <- which(step1 %in% TRUE)
+data$severity[step1true] <- 'Mild Intermittent'
+
+step1.1 <- ((data$FEV1_best / data$FEV1_pred * 100 >= 90) & is.na(data$varPEF))
+step1.1true <- which(step1.1 %in% TRUE)
+data$severity[step1.1true] <- 'Maybe Mild Intermittent'
+
+step2 <- ((data$FEV1_best / data$FEV1_pred * 100 >= 80) & (data$varPEF < 30) & (data$varPEF >= 20))
+step2true <- which(step2 %in% TRUE)
+data$severity[step2true] <- 'Mild Persistant'
+
+step2.2 <- ((data$FEV1_best / data$FEV1_pred * 100 >= 80) & (data$FEV1_best / data$FEV1_pred * 100 < 90) & is.na(data$varPEF))
+step2.2true <- which(step2.2 %in% TRUE)
+data$severity[step2.2true] <- 'Maybe Mild Persistant'
+
+step3 <- ((data$FEV1_best / data$FEV1_pred * 100 <= 80) & (data$FEV1_best / data$FEV1_pred * 100 > 60) & (data$varPEF > 30))
+step3true <- which(step3 %in% TRUE)
+data$severity[step3true] <- 'Moderate Persistant'
+
+step3.3 <- ((data$FEV1_best / data$FEV1_pred * 100 < 80) & (data$FEV1_best / data$FEV1_pred * 100 > 60) & is.na(data$varPEF))
+step3.3true <- which(step3.3 %in% TRUE)
+data$severity[step3.3true] <- 'Maybe Moderate Persistant'
+
+
+data$severity <- as.factor(data$severity)
+```
+
+
+```{r}
+summary(datafull$severity)
+```
+
+```{r}
+datafull$severity <-  as.factor(data$severity)
+test <- datafull %>% filter(severity == 'nan')
+test$FEV1_best / test$FEV1_pred * 100
+datafull
+test
+```
+
+```{r}
+step3.35 <- ((data$FEV1_best / data$FEV1_pred * 100 < 80) & (datafull$Age.asthma.diagnosed.0.0 < 12) & is.na(datafull$varPEF))
+step3.35true <- which(step3.35 %in% TRUE)
+datafull$severity[step3.35true] <- 'Maybe Moderate Persistant'
+
+step4 <- ((data$FEV1_best / data$FEV1_pred * 100 <= 60) & (datafull$varPEF > 30) & (datafull$Age.asthma.diagnosed.0.0 >= 12))
+step4true <- which(step4 %in% TRUE)
+datafull$severity[step4true] <- 'Severe Persistant'
+
+step4.4 <- ((data$FEV1_best / data$FEV1_pred * 100 <= 60) & is.na(datafull$varPEF) & (datafull$Age.asthma.diagnosed.0.0 >= 12))
+step4.4true <- which(step4.4 %in% TRUE)
+datafull$severity[step4.4true] <- 'Severe Persistant'
+
+
+datafull$fevpredperc <- datafull$FEV1_best / datafull$FEV1_pred * 100
+
+
+
+ggplot(datafull, aes(x = severity, y = FEV1)) + geom_boxplot()
+ggplot(datafull, aes(x = severity, y = varPEF)) + geom_boxplot()
+
+datacopd <- datafull[-which(data3$`Doctor diagnosed COPD (chronic obstructive pulmonary disease).0.0` == 'Yes'),]
+
+ggplot(datacopd, aes(x = severity, y = FEV1)) + geom_boxplot()
+ggplot(datacopd, aes(x = severity, y = varPEF)) + geom_boxplot()
+
+ggplot(datafull, aes(x = fevpredperc, y = varPEF)) + geom_point(aes(colour = factor(severity)))
+
+ggplot(filter(datafull, severity == 'nan'), aes(x = fevpredperc, y = varPEF)) + geom_point(aes(colour = (med)))
+
+```
+
+```{r}
+drugs = list('becotide 50 inhaler', 'beclometasone', 'beclomethasone', 'beclazone 50 inhaler', 'beclometasone')
+datafull$severity <- as.character(datafull$severity)
+datafull$severity[which(((datafull$med0 %in% drugs) | (datafull$med1 %in% drugs) | (datafull$med2 %in% drugs) | (datafull$med3 %in% drugs)) & (datafull$med == 'Yes') & (datafull$severity == 'nan') & datafull$fevpredperc <= 60)] <- 'Severe Persistant'
+datafull$severity <- as.factor(datafull$severity)
+ggplot(datafull, aes(x = fevpredperc, y = varPEF)) + geom_point(aes(colour = factor(severity)))
+```
+
